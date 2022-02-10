@@ -6,25 +6,371 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>with line number</title>
     <link href="css/prism.css" rel="stylesheet" />
+<script>
+    (function () {
 
+if (typeof Prism === 'undefined' || typeof document === 'undefined') {
+    return;
+}
+
+/**
+ * Plugin name which is used as a class name for <pre> which is activating the plugin
+ *
+ * @type {string}
+ */
+var PLUGIN_NAME = 'line-numbers';
+
+/**
+ * Regular expression used for determining line breaks
+ *
+ * @type {RegExp}
+ */
+var NEW_LINE_EXP = /\n(?!$)/g;
+
+
+/**
+ * Global exports
+ */
+var config = Prism.plugins.lineNumbers = {
+    /**
+     * Get node for provided line number
+     *
+     * @param {Element} element pre element
+     * @param {number} number line number
+     * @returns {Element|undefined}
+     */
+    getLine: function (element, number) {
+        if (element.tagName !== 'PRE' || !element.classList.contains(PLUGIN_NAME)) {
+            return;
+        }
+
+        var lineNumberRows = element.querySelector('.line-numbers-rows');
+        if (!lineNumberRows) {
+            return;
+        }
+        var lineNumberStart = parseInt(element.getAttribute('data-start'), 10) || 1;
+        var lineNumberEnd = lineNumberStart + (lineNumberRows.children.length - 1);
+
+        if (number < lineNumberStart) {
+            number = lineNumberStart;
+        }
+        if (number > lineNumberEnd) {
+            number = lineNumberEnd;
+        }
+
+        var lineIndex = number - lineNumberStart;
+
+        return lineNumberRows.children[lineIndex];
+    },
+
+    /**
+     * Resizes the line numbers of the given element.
+     *
+     * This function will not add line numbers. It will only resize existing ones.
+     *
+     * @param {HTMLElement} element A `<pre>` element with line numbers.
+     * @returns {void}
+     */
+    resize: function (element) {
+        resizeElements([element]);
+    },
+
+    /**
+     * Whether the plugin can assume that the units font sizes and margins are not depended on the size of
+     * the current viewport.
+     *
+     * Setting this to `true` will allow the plugin to do certain optimizations for better performance.
+     *
+     * Set this to `false` if you use any of the following CSS units: `vh`, `vw`, `vmin`, `vmax`.
+     *
+     * @type {boolean}
+     */
+    assumeViewportIndependence: true
+};
+
+/**
+ * Resizes the given elements.
+ *
+ * @param {HTMLElement[]} elements
+ */
+function resizeElements(elements) {
+    elements = elements.filter(function (e) {
+        var codeStyles = getStyles(e);
+        var whiteSpace = codeStyles['white-space'];
+        return whiteSpace === 'pre-wrap' || whiteSpace === 'pre-line';
+    });
+
+    if (elements.length == 0) {
+        return;
+    }
+
+    var infos = elements.map(function (element) {
+        var codeElement = element.querySelector('code');
+        var lineNumbersWrapper = element.querySelector('.line-numbers-rows');
+        if (!codeElement || !lineNumbersWrapper) {
+            return undefined;
+        }
+
+        /** @type {HTMLElement} */
+        var lineNumberSizer = element.querySelector('.line-numbers-sizer');
+        var codeLines = codeElement.textContent.split(NEW_LINE_EXP);
+
+        if (!lineNumberSizer) {
+            lineNumberSizer = document.createElement('span');
+            lineNumberSizer.className = 'line-numbers-sizer';
+
+            codeElement.appendChild(lineNumberSizer);
+        }
+
+        lineNumberSizer.innerHTML = '0';
+        lineNumberSizer.style.display = 'block';
+
+        var oneLinerHeight = lineNumberSizer.getBoundingClientRect().height;
+        lineNumberSizer.innerHTML = '';
+
+        return {
+            element: element,
+            lines: codeLines,
+            lineHeights: [],
+            oneLinerHeight: oneLinerHeight,
+            sizer: lineNumberSizer,
+        };
+    }).filter(Boolean);
+
+    infos.forEach(function (info) {
+        var lineNumberSizer = info.sizer;
+        var lines = info.lines;
+        var lineHeights = info.lineHeights;
+        var oneLinerHeight = info.oneLinerHeight;
+
+        lineHeights[lines.length - 1] = undefined;
+        lines.forEach(function (line, index) {
+            if (line && line.length > 1) {
+                var e = lineNumberSizer.appendChild(document.createElement('span'));
+                e.style.display = 'block';
+                e.textContent = line;
+            } else {
+                lineHeights[index] = oneLinerHeight;
+            }
+        });
+    });
+
+    infos.forEach(function (info) {
+        var lineNumberSizer = info.sizer;
+        var lineHeights = info.lineHeights;
+
+        var childIndex = 0;
+        for (var i = 0; i < lineHeights.length; i++) {
+            if (lineHeights[i] === undefined) {
+                lineHeights[i] = lineNumberSizer.children[childIndex++].getBoundingClientRect().height;
+            }
+        }
+    });
+
+    infos.forEach(function (info) {
+        var lineNumberSizer = info.sizer;
+        var wrapper = info.element.querySelector('.line-numbers-rows');
+
+        lineNumberSizer.style.display = 'none';
+        lineNumberSizer.innerHTML = '';
+
+        info.lineHeights.forEach(function (height, lineNumber) {
+            wrapper.children[lineNumber].style.height = height + 'px';
+        });
+    });
+}
+
+/**
+ * Returns style declarations for the element
+ *
+ * @param {Element} element
+ */
+function getStyles(element) {
+    if (!element) {
+        return null;
+    }
+
+    return window.getComputedStyle ? getComputedStyle(element) : (element.currentStyle || null);
+}
+
+var lastWidth = undefined;
+window.addEventListener('resize', function () {
+    if (config.assumeViewportIndependence && lastWidth === window.innerWidth) {
+        return;
+    }
+    lastWidth = window.innerWidth;
+
+    resizeElements(Array.prototype.slice.call(document.querySelectorAll('pre.' + PLUGIN_NAME)));
+});
+
+Prism.hooks.add('complete', function (env) {
+    if (!env.code) {
+        return;
+    }
+
+    var code = /** @type {Element} */ (env.element);
+    var pre = /** @type {HTMLElement} */ (code.parentNode);
+
+    // works only for <code> wrapped inside <pre> (not inline)
+    if (!pre || !/pre/i.test(pre.nodeName)) {
+        return;
+    }
+
+    // Abort if line numbers already exists
+    if (code.querySelector('.line-numbers-rows')) {
+        return;
+    }
+
+    // only add line numbers if <code> or one of its ancestors has the `line-numbers` class
+    if (!Prism.util.isActive(code, PLUGIN_NAME)) {
+        return;
+    }
+
+    // Remove the class 'line-numbers' from the <code>
+    code.classList.remove(PLUGIN_NAME);
+    // Add the class 'line-numbers' to the <pre>
+    pre.classList.add(PLUGIN_NAME);
+
+    var match = env.code.match(NEW_LINE_EXP);
+    var linesNum = match ? match.length + 1 : 1;
+    var lineNumbersWrapper;
+
+    var lines = new Array(linesNum + 1).join('<span></span>');
+
+    lineNumbersWrapper = document.createElement('span');
+    lineNumbersWrapper.setAttribute('aria-hidden', 'true');
+    lineNumbersWrapper.className = 'line-numbers-rows';
+    lineNumbersWrapper.innerHTML = lines;
+
+    if (pre.hasAttribute('data-start')) {
+        pre.style.counterReset = 'linenumber ' + (parseInt(pre.getAttribute('data-start'), 10) - 1);
+    }
+
+    env.element.appendChild(lineNumbersWrapper);
+
+    resizeElements([pre]);
+
+    Prism.hooks.run('line-numbers', env);
+});
+
+Prism.hooks.add('line-numbers', function (env) {
+    env.plugins = env.plugins || {};
+    env.plugins.lineNumbers = true;
+});
+
+}());
+</script>
+<style>
+        pre[class*="language-"].line-numbers {
+	position: relative;
+	padding-left: 3.8em;
+	counter-reset: linenumber;
+}
+
+pre[class*="language-"].line-numbers > code {
+	position: relative;
+	white-space: inherit;
+}
+
+.line-numbers .line-numbers-rows {
+	position: absolute;
+	pointer-events: none;
+	top: 0;
+	font-size: 100%;
+	left: -3.8em;
+	width: 3em; /* works for line-numbers below 1000 lines */
+	letter-spacing: -1px;
+	border-right: 1px solid #999;
+
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+
+}
+
+	.line-numbers-rows > span {
+		display: block;
+		counter-increment: linenumber;
+	}
+
+		.line-numbers-rows > span:before {
+			content: counter(linenumber);
+			color: #999;
+			display: block;
+			padding-right: 0.8em;
+			text-align: right;
+		}
+</style>
 </head>
- 
-    <body class="line-numbers"> <!-- enabled for the whole page -->
+<!DOCTYPE html>
 
-        <!-- with line numbers -->
-        <pre><code>...</code></pre>
-        <!-- disabled for a specific element - without line numbers -->
-        <pre class="no-line-numbers"><code>...</code></pre>
-    
-        <div class="no-line-numbers"> <!-- disabled for this subtree -->
-    
-            <!-- without line numbers -->
-            <pre><code>...</code></pre>
-            <!-- enabled for a specific element - with line numbers -->
-            <pre class="line-numbers"><code>...</code></pre>
-    
-        </div>
-        <script src="js/prism.js"></script>
-    </body>
+<body class="language-none">
+
+<header data-plugin-header="line-numbers"></header>
+
+<section class="language-markup">
+  <h1>How to use</h1>
+
+  <p>Obviously, this is supposed to work only for code blocks (<code>&lt;pre>&lt;code></code>) and not for inline code.</p>
+  <p>Add the <code>line-numbers</code> class to your desired <code>&lt;pre></code> or any of its ancestors, and the Line Numbers plugin will take care of the rest. To give all code blocks line numbers, add the <code>line-numbers</code> class to the <code>&lt;body></code> of the page. This is part of a general activation mechanism where adding the <code>line-numbers</code> (or <code>no-line-numbers</code>) class to any element will enable (or disable) the Line Numbers plugin for all code blocks in that element. <br> Example:</p>
+
+  <pre><code>&lt;body class="line-numbers"> &lt;!-- enabled for the whole page -->
+
+	&lt;!-- with line numbers -->
+	&lt;pre>&lt;code>...&lt;/code>&lt;/pre>
+	&lt;!-- disabled for a specific element - without line numbers -->
+	&lt;pre class="no-line-numbers">&lt;code>...&lt;/code>&lt;/pre>
+
+	&lt;div class="no-line-numbers"> &lt;!-- disabled for this subtree -->
+
+		&lt;!-- without line numbers -->
+		&lt;pre>&lt;code>...&lt;/code>&lt;/pre>
+		&lt;!-- enabled for a specific element - with line numbers -->
+		&lt;pre class="line-numbers">&lt;code>...&lt;/code>&lt;/pre>
+
+	&lt;/div>
+&lt;/body></code></pre>
+
+  <p>Optional: You can specify the <code>data-start</code> (Number) attribute on the <code>&lt;pre></code> element. It will shift the line counter.</p>
+  <p>Optional: To support multiline line numbers using soft wrap, apply the CSS <code>white-space: pre-line;</code> or <code>white-space: pre-wrap;</code> to your desired <code>&lt;pre></code>.</p>
+</section>
+
+<section class="line-numbers">
+  <h1>Examples</h1>
+
+  <h2>JavaScript</h2>
+  <pre class="line-numbers" data-src="plugins/line-numbers/prism-line-numbers.js"></pre>
+
+  <h2>CSS</h2>
+  <p>Please note that this <code class="language-markup">&lt;pre></code> does not have the <code>line-numbers</code> class but its parent does.</p>
+  <pre data-src="plugins/line-numbers/prism-line-numbers.css"></pre>
+
+  <h2>HTML</h2>
+  <p>Please note the <code>data-start="-5"</code> in the code below.</p>
+  <pre class="line-numbers" data-src="plugins/line-numbers/index.html" data-start="-5"></pre>
+
+  <h2>Unknown languages</h2>
+  <pre class="language-none line-numbers"><code>This raw text
+is not highlighted
+but it still has
+line numbers</code></pre>
+
+  <h2>Soft wrap support</h2>
+  <p>Please note the <code>style="white-space:pre-wrap;"</code> in the code below.</p>
+  <pre class="line-numbers" data-src="plugins/line-numbers/index.html" data-start="-5" style="white-space:pre-wrap;"></pre>
+
+</section>
+
+<footer data-src="assets/templates/footer.html" data-type="text/html"></footer>
+
+<script src="prism.js"></script>
+<script src="plugins/line-numbers/prism-line-numbers.js"></script>
+<script src="assets/vendor/utopia.js"></script>
+<script src="components.js"></script>
+<script src="assets/code.js"></script>
+
+
+</body>
 
 </html>
