@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>with line number</title>
+    <link href="css/prism.css" rel="stylesheet" />
+
+</head>
+ 
+    <body class="line-numbers"> <!-- enabled for the whole page -->
+
+        <!-- with line numbers -->
+        <pre><code>...</code></pre>
+        <!-- disabled for a specific element - without line numbers -->
+        <pre class="no-line-numbers"><code>...</code></pre>
+    
+        <div class="no-line-numbers"> <!-- disabled for this subtree -->
+    
+            <!-- without line numbers -->
+            <pre><code>...</code></pre>
+            <!-- enabled for a specific element - with line numbers -->
+            <pre class="line-numbers"><code>...</code></pre>
+    
+        </div>
+        <script src="js/prism.js"></script>
+    </body>
+
+</html>
